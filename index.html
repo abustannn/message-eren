@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Anonymous Messages</title>
+    <!-- Include Supabase JS Client Library SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        /* --- iOS iMessage Design Token System --- */
+        :root {
+            --ios-bg: #ffffff;
+            --ios-bubble: #e9e9eb;
+            --ios-bubble-text: #000000;
+            --ios-text: #000000;
+            --ios-secondary-text: #8e8e93;
+            --ios-blue: #007aff;
+            --ios-red: #ff3b30;
+            --ios-input-bg: #f2f2f7;
+            --ios-border: #e5e5ea;
+            --ios-menu-bg: rgba(254, 254, 254, 0.9);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --ios-bg: #000000;
+                --ios-bubble: #262628;
+                --ios-bubble-text: #ffffff;
+                --ios-text: #ffffff;
+                --ios-secondary-text: #8e8e93;
+                --ios-blue: #0a84ff;
+                --ios-red: #ff453a;
+                --ios-input-bg: #1c1c1e;
+                --ios-border: #262628;
+                --ios-menu-bg: rgba(30, 30, 32, 0.9);
+            }
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--ios-bg);
+            color: var(--ios-text);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* --- iOS Navigation Bar Header --- */
+        header {
+            background: rgba(250, 250, 250, 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 0.5px solid var(--ios-border);
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 10;
+            padding: 10px 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            header { background: rgba(20, 20, 20, 0.8); }
+        }
+
+        .header-content-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            padding: 0 16px; 
+            gap: 10px;
+        }
+
+        .header-contact {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .avatar {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            background-size: cover;
+            background-position: center;
+            background-color: #a2a2a7;
+            margin-bottom: 5px;
+            background-image: url('https://scontent.fmnl25-3.fna.fbcdn.net/v/t39.30808-6/479183233_1174513504070089_9139370560317708789_n.jpg?stp=dst-jpg_tt6&cstp=mx960x956&ctp=s960x956&_nc_cat=101&ccb=1-7&_nc_sid=a5f93a&_nc_ohc=wbeDacfh9M0Q7kNvwH047bl&_nc_oc=AdqLSiZFK261KBxfEJ2RCUpKBI3uCR50F2xQrJSFHNJgb6Rej5Ei64xrR-yIwt522y0&_nc_zt=23&_nc_ht=scontent.fmnl25-3.fna&_nc_gid=xi2c4_c-vpPdpKmnZzrmYQ&_nc_ss=7b2a8&oh=00_Af_qdAjr0ZAaEN4RbAvXcm2Scbvcpl8PDNh1lcBo040tGQ&oe=6A334C23');
+        }
+
+        .header-title {
+            font-size: 14px;
+            color: var(--ios-text);
+            font-weight: 600;
+        }
+
+        /* --- Segmented Selector Bar --- */
+        .segmented-control {
+            display: flex;
+            background: rgba(118, 118, 128, 0.12);
+            padding: 2px;
+            border-radius: 9px;
+            width: 200px;
+        }
+
+        .segmented-control button {
+            flex: 1;
+            border: none;
+            background: none;
+            padding: 4px 0;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--ios-text);
+            border-radius: 7px;
+            cursor: pointer;
+        }
+
+        .segmented-control button.active {
+            background: #ffffff;
+            box-shadow: 0px 3px 8px rgba(0, 0, 0, 0.12);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .segmented-control button.active { background: #636366; }
+        }
+
+        /* --- Chat Canvas --- */
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 140px 16px 110px 16px; 
+            display: flex;
+            flex-direction: column;
+        }
+
+        .view-section {
+            display: none;
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .view-section.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- iMessage Conversational Style Bubbles --- */
+        .system-date {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--ios-secondary-text);
+            text-align: center;
+            margin: 24px 0 12px 0;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .message-group {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            margin-bottom: 14px;
+            max-width: 75%;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .message-group.owner-message {
+            align-items: flex-end;
+            align-self: flex-end;
+            max-width: 75%;
+        }
+
+        .sender-tag {
+            font-size: 11px;
+            color: var(--ios-secondary-text);
+            margin-left: 12px;
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+
+        .message-group.owner-message .sender-tag {
+            margin-left: 0;
+            margin-right: 12px;
+            color: var(--ios-blue);
+        }
+
+        .bubble {
+            background-color: var(--ios-bubble);
+            color: var(--ios-bubble-text);
+            padding: 10px 16px;
+            border-radius: 18px;
+            font-size: 16px;
+            line-height: 1.4;
+            word-wrap: break-word;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .message-group.owner-message .bubble {
+            background-color: var(--ios-blue);
+            color: #ffffff;
+        }
+
+        .bubble-img {
+            max-width: 100%;
+            border-radius: 14px;
+            display: block;
+            margin-bottom: 4px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .bubble-img:hover {
+            opacity: 0.9;
+        }
+
+        .bubble-time {
+            font-size: 10px;
+            color: var(--ios-secondary-text);
+            margin-top: 4px;
+            margin-left: 12px;
+        }
+
+        .message-group.owner-message .bubble-time {
+            margin-left: 0;
+            margin-right: 12px;
+        }
+
+        /* --- Bottom Message Input Compose Dock --- */
+        .bottom-dock {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            background: rgba(250, 250, 250, 0.85);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            border-top: 0.5px solid var(--ios-border);
+            padding: 8px 16px 24px 16px;
+            z-index: 10;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .bottom-dock { background: rgba(20, 20, 20, 0.85); }
+        }
+
+        .compose-bar {
+            max-width: 600px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .input-row {
+            display: flex;
+            align-items: flex-end;
+            gap: 8px;
+        }
+
+        .media-btn-wrapper {
+            position: relative;
+            width: 32px;
+            height: 32px;
+            background: rgba(118, 118, 128, 0.16);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            flex-shrink: 0;
+            margin-bottom: 4px;
+        }
+
+        .media-btn-wrapper input[type="file"] {
+            position: absolute;
+            left: 0; top: 0; width: 100%; height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .input-container {
+            flex: 1;
+            background: var(--ios-input-bg);
+            border: 0.5px solid var(--ios-border);
+            border-radius: 18px;
+            padding: 6px 12px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .input-container input, .input-container textarea {
+            background: none;
+            border: none;
+            outline: none;
+            color: var(--ios-text);
+            font-size: 15px;
+            width: 100%;
+        }
+
+        .input-container input {
+            height: 24px;
+            border-bottom: 0.5px solid rgba(118,118,128,0.1);
+            padding-bottom: 4px;
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+
+        .input-container textarea {
+            height: 24px;
+            max-height: 80px;
+            resize: none;
+            padding-top: 2px;
+        }
+
+        .send-btn {
+            width: 30px;
+            height: 30px;
+            background: var(--ios-blue);
+            border: none;
+            border-radius: 50%;
+            color: white;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            margin-bottom: 4px;
+        }
+
+        .send-btn:active { opacity: 0.7; }
+
+        .preview-bar {
+            display: none;
+            position: relative;
+            align-self: flex-start;
+            margin-left: 40px;
+        }
+
+        .preview-bar img {
+            height: 50px;
+            width: 50px;
+            object-fit: cover;
+            border-radius: 8px;
+            border: 1px solid var(--ios-border);
+        }
+
+        .preview-bar .close-preview {
+            position: absolute;
+            top: -6px; right: -6px;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            border-radius: 50%;
+            width: 16px; height: 16px;
+            font-size: 10px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer;
+        }
+
+        /* --- Lock Screen & Verification styles --- */
+        .lock-container {
+            max-width: 320px;
+            margin: 40px auto;
+            text-align: center;
+            display: block;
+        }
+        .lock-container input {
+            text-align: center;
+            letter-spacing: 4px;
+            font-size: 20px;
+            background: var(--ios-input-bg);
+            border-radius: 10px;
+            padding: 12px;
+            width: 100%;
+            border: none;
+            margin-bottom: 12px;
+            outline: none;
+            border: 0.5px solid var(--ios-border);
+        }
+
+        .ios-action-btn {
+            background: var(--ios-blue);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 10px;
+            width: 100%;
+            font-weight: 600;
+            font-size: 15px;
+            cursor: pointer;
+        }
+
+        .empty-canvas {
+            text-align: center;
+            color: var(--ios-secondary-text);
+            font-size: 14px;
+            margin-top: 40px;
+        }
+
+        /* --- iOS Long Press Context Menu --- */
+        .context-menu-backdrop {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.15);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            z-index: 150;
+            display: none;
+        }
+        .context-menu {
+            position: absolute;
+            background: var(--ios-menu-bg);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border-radius: 14px;
+            width: 180px;
+            box-shadow: 0 15px 30px rgba(0,0,0,0.15);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            z-index: 160;
+            border: 0.5px solid var(--ios-border);
+        }
+        .context-menu-item {
+            padding: 12px 16px;
+            font-size: 16px;
+            background: none;
+            border: none;
+            text-align: left;
+            color: var(--ios-text);
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .context-menu-item:not(:last-child) {
+            border-bottom: 0.5px solid var(--ios-border);
+        }
+        .context-menu-item.destructive {
+            color: var(--ios-red);
+        }
+        .context-menu-item:active {
+            background: rgba(118, 118, 128, 0.15);
+        }
+
+        /* --- iOS Lightbox Popup --- */
+        .lightbox-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            z-index: 100;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .lightbox-overlay.active {
+            display: flex;
+            opacity: 1;
+        }
+
+        .lightbox-content {
+            position: relative;
+            max-width: 90%;
+            max-height: 80%;
+            transform: scale(0.9);
+            transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .lightbox-overlay.active .lightbox-content {
+            transform: scale(1);
+        }
+
+        .lightbox-img {
+            max-width: 100%;
+            max-height: 80vh;
+            border-radius: 18px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+            display: block;
+        }
+
+        .lightbox-close {
+            position: absolute;
+            top: -50px;
+            right: 0;
+            background: rgba(255, 255, 255, 0.2);
+            color: #ffffff;
+            border: none;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="header-content-wrapper">
+            <div class="header-contact">
+                <div class="avatar"></div>
+                <div class="header-title">Eren Yeager</div>
+            </div>
+
+            <div class="segmented-control">
+                <button id="tab-visitor" class="active" onclick="toggleView('visitor')">Visitor Mode</button>
+                <button id="tab-owner" onclick="toggleView('owner')">Owner Mode</button>
+            </div>
+        </div>
+    </header>
+
+    <div class="chat-container" id="chatContainer">
+        <div id="view-visitor" class="view-section active"></div>
+        <div id="view-owner" class="view-section">
+            <div id="auth-wall" class="lock-container">
+                <input type="password" id="passcodeField" maxlength="4" placeholder="••••">
+                <button class="ios-action-btn" onclick="verifyAccess()">Unlock Moderation</button>
+            </div>
+            <div id="owner-stream" style="display:none; width:100%;"></div>
+        </div>
+    </div>
+
+    <!-- Inputcompose Dock -->
+    <div class="bottom-dock" id="bottomDock">
+        <div class="compose-bar">
+            <div class="preview-bar" id="previewContainer">
+                <div class="close-preview" onclick="clearAttachedPhoto()">✕</div>
+                <img id="imgAttachmentMock" src="" alt="Thumbnail">
+            </div>
+
+            <div class="input-row">
+                <div class="media-btn-wrapper">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--ios-blue)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    <input type="file" id="mediaInput" accept="image/*" onchange="processImageAttachment(event)">
+                </div>
+
+                <div class="input-container">
+                    <input type="text" id="codenameField" placeholder="Codename (Required)" autocomplete="off">
+                    <textarea id="messageField" placeholder="iMessage" rows="1" oninput="autoExpandTextarea(this)"></textarea>
+                </div>
+
+                <button class="send-btn" onclick="submitMessage()">↑</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div class="context-menu-backdrop" id="menuBackdrop" onclick="closeContextMenu()"></div>
+    <div class="context-menu" id="contextMenu" style="display: none;">
+        <button class="context-menu-item" onclick="triggerReply()">Reply <span style="opacity:0.5">↩</span></button>
+        <button class="context-menu-item destructive" onclick="triggerDelete()">Delete <span>🗑</span></button>
+    </div>
+
+    <div class="lightbox-overlay" id="lightbox" onclick="closeLightbox(event)">
+        <div class="lightbox-content">
+            <button class="lightbox-close" onclick="closeLightbox(null, true)">✕</button>
+            <img class="lightbox-img" id="lightboxTarget" src="" alt="Zoomed view">
+        </div>
+    </div>
+
+    <script>
+        // --- LIVE SUPABASE CREDENTIALS ---
+        const SUPABASE_URL = "https://nwczfdgyvdpbuowatjjb.supabase.co"; 
+        const SUPABASE_ANON_KEY = "sb_publishable_mAOPHe9zNiSaZq_TvCpC2w_wCqHfvkp"; 
+
+        // Initialize Supabase Client
+        const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        let base64AssetString = "";
+        let currentMode = "visitor";
+        let activeTargetMessageId = null;
+        let pressTimer = null;
+        let isLongPressAction = false;
+        let globalCachedMessages = [];
+
+        document.addEventListener("DOMContentLoaded", () => {
+            initializeSupabaseStream();
+        });
+
+        // Live Real-time listener setup for database updates
+        async function initializeSupabaseStream() {
+            // 1. Initial Data Fetch
+            const { data, error } = await _supabase
+                .from('global_messages')
+                .select('*')
+                .order('id', { ascending: true });
+
+            if (!error && data) {
+                globalCachedMessages = data;
+                renderDynamicThreads();
+                scrollToBottom();
+            }
+
+            // 2. Continuous Live updates (Listen to Insert/Delete actions on database)
+            _supabase
+                .channel('room-updates')
+                .on('postgres_changes', { event: '*', filter: true, schema: 'public', table: 'global_messages' }, async () => {
+                    const { data: updatedFeed } = await _supabase.from('global_messages').select('*').order('id', { ascending: true });
+                    if (updatedFeed) {
+                        globalCachedMessages = updatedFeed;
+                        renderDynamicThreads();
+                    }
+                })
+                .subscribe();
+        }
+
+        function toggleView(target) {
+            currentMode = target;
+            document.getElementById('tab-visitor').classList.remove('active');
+            document.getElementById('tab-owner').classList.remove('active');
+            document.getElementById('view-visitor').classList.remove('active');
+            document.getElementById('view-owner').classList.remove('active');
+
+            const codenameInput = document.getElementById('codenameField');
+            const messageInput = document.getElementById('messageField');
+
+            if(target === 'visitor') {
+                document.getElementById('tab-visitor').classList.add('active');
+                document.getElementById('view-visitor').classList.add('active');
+                codenameInput.style.display = "block";
+                messageInput.placeholder = "iMessage";
+            } else {
+                document.getElementById('tab-owner').classList.add('active');
+                document.getElementById('view-owner').classList.add('active');
+                
+                if(sessionStorage.getItem('ownerAuthenticated') === 'true') {
+                    displayOwnerDashboard();
+                } else {
+                    document.getElementById('auth-wall').style.display = 'block';
+                    document.getElementById('owner-stream').style.display = 'none';
+                    codenameInput.style.display = "none";
+                    messageInput.placeholder = "iMessage";
+                }
+            }
+        }
+
+        function verifyAccess() {
+            const entered = document.getElementById('passcodeField').value;
+            if(entered === '0707') {
+                sessionStorage.setItem('ownerAuthenticated', 'true');
+                displayOwnerDashboard();
+            } else {
+                alert("Incorrect Passcode");
+            }
+            document.getElementById('passcodeField').value = "";
+        }
+
+        function displayOwnerDashboard() {
+            document.getElementById('auth-wall').style.display = 'none';
+            document.getElementById('owner-stream').style.display = 'block';
+            
+            const codenameInput = document.getElementById('codenameField');
+            const messageInput = document.getElementById('messageField');
+            codenameInput.style.display = "none";
+            messageInput.placeholder = "Texting as Eren Yeager...";
+            
+            renderDynamicThreads();
+        }
+
+        function autoExpandTextarea(element) {
+            element.style.height = '24px';
+            element.style.height = Math.min(element.scrollHeight, 80) + 'px';
+        }
+
+        function processImageAttachment(event) {
+            const dataFile = event.target.files[0];
+            const targetMock = document.getElementById('imgAttachmentMock');
+            const wrapper = document.getElementById('previewContainer');
+
+            if(dataFile) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    base64AssetString = e.target.result;
+                    targetMock.src = base64AssetString;
+                    wrapper.style.display = "block";
+                }
+                reader.readAsDataURL(dataFile);
+            }
+        }
+
+        function clearAttachedPhoto() {
+            base64AssetString = "";
+            document.getElementById('mediaInput').value = "";
+            document.getElementById('previewContainer').style.display = "none";
+            document.getElementById('imgAttachmentMock').src = "";
+        }
+
+        async function submitMessage() {
+            let alias = document.getElementById('codenameField').value.trim();
+            const textContent = document.getElementById('messageField').value.trim();
+            const isOwnerMessage = (currentMode === 'owner' && sessionStorage.getItem('ownerAuthenticated') === 'true');
+
+            if (isOwnerMessage) {
+                alias = "Eren Yeager (Owner) 👑";
+            } else {
+                if(!alias) {
+                    alert("Please add a required Codename.");
+                    return;
+                }
+            }
+
+            if(!textContent && !base64AssetString) {
+                alert("Cannot send an empty message.");
+                return;
+            }
+
+            const now = new Date();
+            const payload = {
+                codename: alias,
+                message: textContent,
+                image: base64AssetString || null,
+                is_owner: isOwnerMessage,
+                system_date_stamp: now.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' }),
+                bubble_time_stamp: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            };
+
+            // Save payload to cloud Supabase Database table row
+            const { error } = await _supabase.from('global_messages').insert([payload]);
+
+            if (error) {
+                alert("Cloud save error: " + error.message);
+            } else {
+                document.getElementById('messageField').value = "";
+                document.getElementById('messageField').style.height = '24px';
+                clearAttachedPhoto();
+                scrollToBottom();
+            }
+        }
+
+        function handleBubblePressStart(event, msgId) {
+            if (currentMode !== 'owner' || sessionStorage.getItem('ownerAuthenticated') !== 'true') return;
+            
+            activeTargetMessageId = msgId;
+            isLongPressAction = false;
+            
+            const clickX = event.clientX || (event.touches && event.touches[0].clientX);
+            const clickY = event.clientY || (event.touches && event.touches[0].clientY);
+
+            pressTimer = setTimeout(() => {
+                isLongPressAction = true;
+                openContextMenu(clickX, clickY);
+            }, 500); 
+        }
+
+        function handleBubblePressEnd(imageSrc) {
+            if (pressTimer) clearTimeout(pressTimer);
+            if (!isLongPressAction && imageSrc && imageSrc !== 'null') {
+                openLightbox(imageSrc);
+            }
+        }
+
+        function openContextMenu(x, y) {
+            const backdrop = document.getElementById('menuBackdrop');
+            const menu = document.getElementById('contextMenu');
+
+            backdrop.style.display = "block";
+            menu.style.display = "flex";
+
+            let adjustedLeft = x - 50;
+            let adjustedTop = y + 15;
+
+            if (adjustedLeft + 180 > window.innerWidth) adjustedLeft = window.innerWidth - 200;
+            if (adjustedTop + 100 > window.innerHeight) adjustedTop = y - 95;
+
+            menu.style.left = `${Math.max(10, adjustedLeft)}px`;
+            menu.style.top = `${Math.max(10, adjustedTop)}px`;
+        }
+
+        function closeContextMenu() {
+            document.getElementById('menuBackdrop').style.display = "none";
+            document.getElementById('contextMenu').style.display = "none";
+            activeTargetMessageId = null;
+        }
+
+        function triggerReply() {
+            let found = globalCachedMessages.find(item => item.id === activeTargetMessageId);
+            if(found) {
+                document.getElementById('messageField').value = `Replying to @${found.codename}: `;
+                document.getElementById('messageField').focus();
+            }
+            closeContextMenu();
+        }
+
+        async function triggerDelete() {
+            if(activeTargetMessageId && confirm("Permanently delete this bubble from live database history?")) {
+                const { error } = await _supabase
+                    .from('global_messages')
+                    .delete()
+                    .eq('id', activeTargetMessageId);
+                
+                if (error) alert("Could not delete record: " + error.message);
+            }
+            closeContextMenu();
+        }
+
+        function renderDynamicThreads() {
+            const targetVisitorView = document.getElementById('view-visitor');
+            const targetOwnerView = document.getElementById('owner-stream');
+
+            if(globalCachedMessages.length === 0) {
+                const standardFallback = `<div class="empty-canvas">No messages yet.</div>`;
+                targetVisitorView.innerHTML = standardFallback;
+                targetOwnerView.innerHTML = standardFallback;
+                return;
+            }
+
+            let visitorHTML = "";
+            let ownerHTML = "";
+            let trackedDatePointer = "";
+
+            const isAuthorized = sessionStorage.getItem('ownerAuthenticated') === 'true';
+
+            globalCachedMessages.forEach((item) => {
+                let timelineDivider = "";
+                if(item.system_date_stamp !== trackedDatePointer) {
+                    timelineDivider = `<div class="system-date">${item.system_date_stamp}</div>`;
+                    trackedDatePointer = item.system_date_stamp;
+                }
+
+                const ownerClassModifier = item.is_owner ? "owner-message" : "";
+                const imageArg = item.image ? `'${item.image}'` : 'null';
+
+                visitorHTML += `
+                    ${timelineDivider}
+                    <div class="message-group ${ownerClassModifier}">
+                        <span class="sender-tag">${sanitize(item.codename)}</span>
+                        <div class="bubble" onclick="openLightbox(${imageArg})">
+                            ${item.image ? `<img src="${item.image}" class="bubble-img" alt="Attachment">` : ''}
+                            ${item.message ? `<div>${sanitize(item.message)}</div>` : ''}
+                        </div>
+                        <span class="bubble-time">${item.bubble_time_stamp}</span>
+                    </div>
+                `;
+
+                ownerHTML += `
+                    ${timelineDivider}
+                    <div class="message-group ${ownerClassModifier}">
+                        <span class="sender-tag">${sanitize(item.codename)}</span>
+                        <div class="bubble" 
+                             onmousedown="handleBubblePressStart(event, ${item.id})" 
+                             onmouseup="handleBubblePressEnd(${imageArg})" 
+                             onmouseleave="handleBubblePressEnd(null)"
+                             ontouchstart="handleBubblePressStart(event, ${item.id})" 
+                             ontouchend="handleBubblePressEnd(${imageArg})">
+                            ${item.image ? `<img src="${item.image}" class="bubble-img" alt="Attachment">` : ''}
+                            ${item.message ? `<div>${sanitize(item.message)}</div>` : ''}
+                        </div>
+                        <span class="bubble-time">${item.bubble_time_stamp}</span>
+                    </div>
+                `;
+            });
+
+            targetVisitorView.innerHTML = visitorHTML;
+            if(isAuthorized) {
+                targetOwnerView.innerHTML = ownerHTML;
+            }
+        }
+
+        function scrollToBottom() {
+            setTimeout(() => {
+                const canvas = document.getElementById('chatContainer');
+                canvas.scrollTop = canvas.scrollHeight;
+            }, 50);
+        }
+
+        function openLightbox(sourceURL) {
+            if(!sourceURL || sourceURL === null || sourceURL === 'null') return;
+            const targetElement = document.getElementById('lightboxTarget');
+            const targetOverlay = document.getElementById('lightbox');
+            
+            targetElement.src = sourceURL;
+            targetOverlay.style.display = "flex";
+            setTimeout(() => { targetOverlay.classList.add('active'); }, 10);
+        }
+
+        function closeLightbox(event, force = false) {
+            if(!force && event && event.target.id === 'lightboxTarget') return;
+            const targetOverlay = document.getElementById('lightbox');
+            targetOverlay.classList.remove('active');
+            setTimeout(() => {
+                targetOverlay.style.display = "none";
+                document.getElementById('lightboxTarget').src = "";
+            }, 250);
+        }
+
+        function sanitize(inputString) {
+            if(!inputString) return "";
+            return inputString.replace(/[&<>'"]/g, match => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+            }[match] || match));
+        }
+    </script>
+</body>
+</html>
