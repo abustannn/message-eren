@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Anonymous Messages</title>
-    <!-- Include Supabase JS Client Library SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         /* --- iOS iMessage Design Token System --- */
@@ -181,7 +180,6 @@
         .message-group.owner-message {
             align-items: flex-end;
             align-self: flex-end;
-            max-width: 75%;
         }
 
         .sender-tag {
@@ -208,6 +206,7 @@
             word-wrap: break-word;
             position: relative;
             cursor: pointer;
+            margin-bottom: 4px;
         }
 
         .message-group.owner-message .bubble {
@@ -215,11 +214,19 @@
             color: #ffffff;
         }
 
+        /* Naked iOS Style Image Bubbles */
+        .bubble-image-only {
+            background: none !important;
+            padding: 0 !important;
+            border-radius: 0 !important;
+            margin-bottom: 4px;
+        }
+
         .bubble-img {
             max-width: 100%;
-            border-radius: 14px;
+            max-height: 300px;
+            border-radius: 18px;
             display: block;
-            margin-bottom: 4px;
             cursor: pointer;
             transition: opacity 0.2s;
         }
@@ -231,7 +238,7 @@
         .bubble-time {
             font-size: 10px;
             color: var(--ios-secondary-text);
-            margin-top: 4px;
+            margin-top: 2px;
             margin-left: 12px;
         }
 
@@ -543,7 +550,6 @@
         </div>
     </div>
 
-    <!-- Inputcompose Dock -->
     <div class="bottom-dock" id="bottomDock">
         <div class="compose-bar">
             <div class="preview-bar" id="previewContainer">
@@ -567,7 +573,6 @@
         </div>
     </div>
 
-    <!-- Modals -->
     <div class="context-menu-backdrop" id="menuBackdrop" onclick="closeContextMenu()"></div>
     <div class="context-menu" id="contextMenu" style="display: none;">
         <button class="context-menu-item" onclick="triggerReply()">Reply <span style="opacity:0.5">↩</span></button>
@@ -582,11 +587,10 @@
     </div>
 
     <script>
-        // --- LIVE SUPABASE CREDENTIALS ---
         const SUPABASE_URL = "https://nwczfdgyvdpbuowatjjb.supabase.co"; 
         const SUPABASE_ANON_KEY = "sb_publishable_mAOPHe9zNiSaZq_TvCpC2w_wCqHfvkp"; 
 
-        // Initialize Supabase Client
+        // Safe client initialization using public anon tokens
         const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         let base64AssetString = "";
@@ -600,9 +604,7 @@
             initializeSupabaseStream();
         });
 
-        // Live Real-time listener setup for database updates
         async function initializeSupabaseStream() {
-            // 1. Initial Data Fetch
             const { data, error } = await _supabase
                 .from('global_messages')
                 .select('*')
@@ -614,7 +616,6 @@
                 scrollToBottom();
             }
 
-            // 2. Continuous Live updates (Listen to Insert/Delete actions on database)
             _supabase
                 .channel('room-updates')
                 .on('postgres_changes', { event: '*', filter: true, schema: 'public', table: 'global_messages' }, async () => {
@@ -737,7 +738,6 @@
                 bubble_time_stamp: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             };
 
-            // Save payload to cloud Supabase Database table row
             const { error } = await _supabase.from('global_messages').insert([payload]);
 
             if (error) {
@@ -752,7 +752,7 @@
 
         function handleBubblePressStart(event, msgId) {
             if (currentMode !== 'owner' || sessionStorage.getItem('ownerAuthenticated') !== 'true') return;
-            
+            event.stopPropagation();
             activeTargetMessageId = msgId;
             isLongPressAction = false;
             
@@ -843,34 +843,59 @@
                 const ownerClassModifier = item.is_owner ? "owner-message" : "";
                 const imageArg = item.image ? `'${item.image}'` : 'null';
 
-                visitorHTML += `
-                    ${timelineDivider}
-                    <div class="message-group ${ownerClassModifier}">
-                        <span class="sender-tag">${sanitize(item.codename)}</span>
-                        <div class="bubble" onclick="openLightbox(${imageArg})">
-                            ${item.image ? `<img src="${item.image}" class="bubble-img" alt="Attachment">` : ''}
-                            ${item.message ? `<div>${sanitize(item.message)}</div>` : ''}
+                // --- VISITOR STREAM COMPILER ---
+                visitorHTML += timelineDivider;
+                visitorHTML += `<div class="message-group ${ownerClassModifier}">`;
+                visitorHTML += `<span class="sender-tag">${sanitize(item.codename)}</span>`;
+                
+                if(item.image) {
+                    visitorHTML += `
+                        <div class="bubble bubble-image-only" onclick="openLightbox(${imageArg})">
+                            <img src="${item.image}" class="bubble-img" alt="Attachment">
                         </div>
-                        <span class="bubble-time">${item.bubble_time_stamp}</span>
-                    </div>
-                `;
+                    `;
+                }
+                if(item.message) {
+                    visitorHTML += `
+                        <div class="bubble" onclick="openLightbox(null)">
+                            <div>${sanitize(item.message)}</div>
+                        </div>
+                    `;
+                }
+                visitorHTML += `<span class="bubble-time">${item.bubble_time_stamp}</span>`;
+                visitorHTML += `</div>`;
 
-                ownerHTML += `
-                    ${timelineDivider}
-                    <div class="message-group ${ownerClassModifier}">
-                        <span class="sender-tag">${sanitize(item.codename)}</span>
-                        <div class="bubble" 
+                // --- OWNER STREAM COMPILER ---
+                ownerHTML += timelineDivider;
+                ownerHTML += `<div class="message-group ${ownerClassModifier}">`;
+                ownerHTML += `<span class="sender-tag">${sanitize(item.codename)}</span>`;
+                
+                if(item.image) {
+                    ownerHTML += `
+                        <div class="bubble bubble-image-only" 
                              onmousedown="handleBubblePressStart(event, ${item.id})" 
                              onmouseup="handleBubblePressEnd(${imageArg})" 
                              onmouseleave="handleBubblePressEnd(null)"
                              ontouchstart="handleBubblePressStart(event, ${item.id})" 
                              ontouchend="handleBubblePressEnd(${imageArg})">
-                            ${item.image ? `<img src="${item.image}" class="bubble-img" alt="Attachment">` : ''}
-                            ${item.message ? `<div>${sanitize(item.message)}</div>` : ''}
+                            <img src="${item.image}" class="bubble-img" alt="Attachment">
                         </div>
-                        <span class="bubble-time">${item.bubble_time_stamp}</span>
-                    </div>
-                `;
+                    `;
+                }
+                if(item.message) {
+                    ownerHTML += `
+                        <div class="bubble" 
+                             onmousedown="handleBubblePressStart(event, ${item.id})" 
+                             onmouseup="handleBubblePressEnd(null)" 
+                             onmouseleave="handleBubblePressEnd(null)"
+                             ontouchstart="handleBubblePressStart(event, ${item.id})" 
+                             ontouchend="handleBubblePressEnd(null)">
+                            <div>${sanitize(item.message)}</div>
+                        </div>
+                    `;
+                }
+                ownerHTML += `<span class="bubble-time">${item.bubble_time_stamp}</span>`;
+                ownerHTML += `</div>`;
             });
 
             targetVisitorView.innerHTML = visitorHTML;
